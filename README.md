@@ -70,7 +70,7 @@ asciinema handles recording well; synchronized multi-stream replay with usable c
 ### pipx (recommended — global CLI)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cast-sync-replay.git
+git clone https://github.com/muslimaamir72/cast-sync-replay.git
 cd cast-sync-replay
 pipx install -e .
 ```

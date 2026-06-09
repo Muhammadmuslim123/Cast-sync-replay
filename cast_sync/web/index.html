@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cast Sync Replay</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -15,12 +15,13 @@
         <button id="btn-play" type="button">Play</button>
         <button id="btn-pause" type="button">Pause</button>
         <button id="btn-restart" type="button">Restart</button>
-        <button id="btn-back-10" type="button" title="Seek back 10 seconds">−10s</button>
-        <button id="btn-fwd-10" type="button" title="Seek forward 10 seconds">+10s</button>
+        <button id="btn-back-10" type="button" title="Step back 10 output events">−10</button>
+        <button id="btn-fwd-10" type="button" title="Step forward 10 output events">+10</button>
+        <button id="btn-end" type="button" title="Jump to the end of the selected session">End</button>
         <label class="speed">
           Speed
           <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1" />
-          <span id="speed-label">1×</span>
+          <span id="speed-label">12/s</span>
         </label>
         <span id="sync-clock" class="clock">0:00</span>
       </div>
@@ -29,12 +30,17 @@
       <input id="timeline" type="range" min="0" max="0" step="0.5" value="0" disabled />
       <span id="timeline-end" class="clock">0:00</span>
     </div>
-    <p class="hint">Pause, drag the timeline, or use ±10s to jump anywhere. Scroll inside each pane to read and copy output.</p>
+    <div id="session-row" class="session-row" hidden>
+      <label for="session-select">Session</label>
+      <select id="session-select"></select>
+      <span id="session-summary"></span>
+    </div>
+    <p class="hint">Review advances by output events, so idle waits are skipped. Scroll and copy directly inside each pane.</p>
   </header>
 
   <main id="grid"></main>
 
-  <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="player.js"></script>
 </body>
 </html>

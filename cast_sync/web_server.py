@@ -8,10 +8,11 @@ import signal
 import socket
 import threading
 import webbrowser
+from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 
 from .layout import GridLayout, compute_grid, compute_stream_layouts
 from .timeline import SyncedStream
@@ -35,7 +36,8 @@ class _ReplayHandler(SimpleHTTPRequestHandler):
             super().log_message(format, *args)
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/api/config":
+        route = urlparse(self.path).path
+        if route == "/api/config":
             body = json.dumps(self.config).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -44,18 +46,20 @@ class _ReplayHandler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if self.path.startswith("/casts/"):
+        if route.startswith("/casts/"):
             return super().do_GET()
 
-        if self.path in ("/", "/index.html", "/player.js", "/styles.css"):
-            if self.path == "/":
+        if route in ("/", "/index.html", "/player.js", "/styles.css"):
+            if route == "/":
                 self.path = "/index.html"
+            else:
+                self.path = route
             return super().do_GET()
 
         self.send_error(404)
 
     def do_HEAD(self) -> None:  # noqa: N802
-        if self.path.startswith("/casts/"):
+        if urlparse(self.path).path.startswith("/casts/"):
             self._serve_cast_head()
             return
         super().do_HEAD()
@@ -73,9 +77,9 @@ class _ReplayHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def translate_path(self, path: str) -> str:
-        if path.startswith("/casts/"):
-            rel = path[len("/casts/") :]
-            # Path segments were URL-encoded file names; resolve under cast root.
+        route = urlparse(path).path
+        if route.startswith("/casts/"):
+            rel = unquote(route[len("/casts/") :])
             cast_root = Path(self.config.get("cast_root", ""))
             target = (cast_root / rel).resolve()
             if not str(target).startswith(str(cast_root.resolve())):
@@ -95,27 +99,70 @@ def build_config(
         [s.metadata.height for s in streams],
     )
 
+    stream_configs = [
+        {
+            "id": i,
+            "name": s.name,
+            "url": f"/casts/{quote(s.path.name, safe='')}",
+            "delay": s.delay,
+            "timestamp": s.metadata.timestamp,
+            "started_at": datetime.fromtimestamp(s.metadata.timestamp).strftime(
+                "%Y-%m-%d %H:%M"
+            ),
+            "is_primary": s.is_primary,
+            "width": s.metadata.width,
+            "height": s.metadata.height,
+            "row": layouts[i].row,
+            "col": layouts[i].col,
+            "col_span": layouts[i].col_span,
+            "row_span": layouts[i].row_span,
+            "font_size": layouts[i].font_size,
+        }
+        for i, s in enumerate(streams)
+    ]
+
     return {
         "cast_root": str(cast_root.resolve()),
         "port": port,
         "grid": {"rows": grid.rows, "cols": grid.cols, "split": grid.split},
-        "streams": [
-            {
-                "id": i,
-                "name": s.name,
-                "url": f"/casts/{quote(s.path.name)}",
-                "delay": s.delay,
-                "is_primary": s.is_primary,
-                "width": s.metadata.width,
-                "height": s.metadata.height,
-                "row": layouts[i].row,
-                "col": layouts[i].col,
-                "col_span": layouts[i].col_span,
-                "row_span": layouts[i].row_span,
-                "font_size": layouts[i].font_size,
-            }
-            for i, s in enumerate(streams)
-        ],
+        "streams": stream_configs,
+        "sessions": build_sessions(stream_configs),
+    }
+
+
+def build_sessions(streams: list[dict[str, Any]], gap_seconds: int = 6 * 60 * 60) -> list[dict[str, Any]]:
+    """Group recordings into review sessions when their start times are far apart."""
+    sessions: list[dict[str, Any]] = []
+    current: list[dict[str, Any]] = []
+
+    for stream in sorted(streams, key=lambda s: s["timestamp"]):
+        if current and stream["timestamp"] - current[-1]["timestamp"] > gap_seconds:
+            sessions.append(_session_config(len(sessions), current))
+            current = []
+        current.append(stream)
+
+    if current:
+        sessions.append(_session_config(len(sessions), current))
+
+    return sessions
+
+
+def _session_config(index: int, streams: list[dict[str, Any]]) -> dict[str, Any]:
+    start = streams[0]["timestamp"]
+    end = streams[-1]["timestamp"]
+    start_label = datetime.fromtimestamp(start).strftime("%a %b %-d, %Y %H:%M")
+    if start == end:
+        label = f"Session {index + 1}: {start_label}"
+    else:
+        end_label = datetime.fromtimestamp(end).strftime("%H:%M")
+        label = f"Session {index + 1}: {start_label} to {end_label}"
+    return {
+        "id": index,
+        "label": label,
+        "start": start,
+        "end": end,
+        "stream_ids": [s["id"] for s in streams],
+        "count": len(streams),
     }
 
 
